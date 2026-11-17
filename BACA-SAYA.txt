@@ -20,7 +20,9 @@ FITUR
 - Tombol Hentikan suara
 - Mode Libur: matikan semua bel otomatis sekali tekan
 - Riwayat bel (tercatat siapa yang membunyikan/mengubah)
-- Akun: Admin (jadwal, suara, akun, mode libur) dan Operator (bunyikan/hentikan bel, lihat jadwal)
+- Akun: Admin (jadwal semua akun, suara, akun, mode libur) dan Operator (jadwal sendiri, bunyikan/hentikan bel)
+- Setiap akun punya jadwal sendiri; semua digabung. Jika jam & hari sama, hanya satu yang berbunyi
+  (jadwal yang dibuat lebih dulu)
 - Halaman speaker menampilkan daftar jadwal bel berikutnya + hitung mundur
 - Update otomatis dari GitHub (run.js) - data/ dan sounds/ tidak pernah tertimpa
 - Sudah ada 2 contoh suara: "Bel Ding Dong" dan "Bel Kring"

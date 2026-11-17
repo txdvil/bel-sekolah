@@ -113,7 +113,7 @@ function render(msg) {
   list.forEach((b, i) => {
     const dayKey = b.today ? 'Hari ini' : b.day;
     if (dayKey !== lastDay) { if (!(i === 0 && b.today)) html += `<div class="dayhead">${esc(dayKey)}</div>`; lastDay = dayKey; }
-    html += `<div class="item ${i === 0 ? 'first' : ''}"><div class="t">${b.time}</div><div><div class="l">${esc(b.label || 'Bel')}</div><div class="d">${esc((b.sound || '').replace(/\.[^.]+$/, ''))}</div></div></div>`;
+    html += `<div class="item ${i === 0 ? 'first' : ''}"><div class="t">${b.time}</div><div><div class="l">${esc(b.label || 'Bel')}</div><div class="d">${esc(b.owner || '')}${b.owner ? ' · ' : ''}${esc((b.sound || '').replace(/\.[^.]+$/, ''))}</div></div></div>`;
   });
   $('list').innerHTML = html;
   tick();

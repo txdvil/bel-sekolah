@@ -60,6 +60,13 @@
   #login .card { width:100%; max-width:340px; text-align:center; }
   #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:10px 16px; border-radius:10px; font-size:14px; display:none; z-index:30; max-width:90%; }
   .dirty { background:var(--warn) !important; color:#fff !important; }
+  .hint { font-size:12px; margin-top:8px; padding:6px 8px; border-radius:8px; }
+  .hint:empty { display:none; }
+  .hint.warn { background:#fff7ed; color:#9a3412; }
+  .hint.info { background:#eff6ff; color:#1e40af; }
+  .ro.skip { opacity:.5; }
+  .ro.skip b { text-decoration:line-through; }
+  .skipnote { font-size:12px; color:var(--warn); }
   .admin-only { display:none; }
   body.is-admin .admin-only { display:block; }
   body.is-admin .op-only { display:none; }
@@ -105,21 +112,25 @@
     <div class="mut">Aktifkan saat libur/tanggal merah agar semua bel otomatis tidak berbunyi. Tombol manual tetap bisa dipakai.</div>
   </div>
 
-  <!-- Jadwal: tampilan baca-saja untuk operator -->
-  <div class="card op-only">
-    <h2>Jadwal Bel</h2>
-    <div id="schedRO"></div>
-  </div>
-
-  <!-- Jadwal: editor untuk admin -->
-  <div class="card admin-only">
-    <h2>Jadwal Bel <button class="sm" onclick="addSched()">+ Tambah</button></h2>
+  <!-- Jadwal milik akun (setiap akun mengatur jadwalnya sendiri) -->
+  <div class="card">
+    <h2><span id="schedTitle">Jadwal Saya</span> <button class="sm" onclick="addSched()">+ Tambah</button></h2>
+    <div class="admin-only" style="margin-bottom:10px">
+      <select id="ownerSel" onchange="changeOwner(this.value)"></select>
+    </div>
     <div id="scheds"></div>
     <div class="row2">
       <button class="pri" id="saveBtn" style="flex:1" onclick="saveScheds()">💾 Simpan Jadwal</button>
       <button onclick="copyDay()">⧉ Salin Pola Hari</button>
     </div>
-    <p class="mut">Waktu mengikuti jam server (WIT). Ketuk nama hari untuk memilih/membatalkan.</p>
+    <p class="mut">Jadwal Anda digabung dengan jadwal akun lain. Jika jam & harinya sama, hanya <b>satu</b> yang berbunyi: jadwal yang <b>dibuat lebih dulu</b>. Waktu mengikuti jam server (WIT).</p>
+  </div>
+
+  <!-- Gabungan semua jadwal -->
+  <div class="card">
+    <h2>Jadwal Gabungan (semua akun)</h2>
+    <div class="days" id="combDays" style="margin:0 0 8px"></div>
+    <div id="combined"></div>
   </div>
 
   <div class="card admin-only">
@@ -137,8 +148,8 @@
       <input id="nuUser" placeholder="Username (huruf kecil), mis. rina" autocapitalize="none">
       <input id="nuPass" type="text" placeholder="Password (min. 6 karakter)">
       <select id="nuRole">
-        <option value="operator">Operator — hanya bunyikan/hentikan bel & lihat jadwal</option>
-        <option value="admin">Admin — semua akses (jadwal, suara, akun)</option>
+        <option value="operator">Operator — atur jadwal sendiri, bunyikan/hentikan bel</option>
+        <option value="admin">Admin — semua akses (jadwal semua akun, suara, akun, mode libur)</option>
       </select>
       <button class="pri" onclick="addUser()">Simpan Akun</button>
     </div>
@@ -169,7 +180,7 @@
 const DAYS = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
 const ORDER = [1,2,3,4,5,6,0];
 let token = localStorage.getItem('belToken') || '';
-let state = null, scheds = [], rev = 0, dirty = false, offset = 0;
+let state = null, scheds = [], rev = 0, dirty = false, offset = 0, editOwner = null, combDay = new Date().getDay();
 const preview = new Audio();
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -206,8 +217,57 @@ async function load(full) {
   try { state = await api('/api/state'); } catch { return; }
   offset = state.serverTime - Date.now();
   document.body.classList.toggle('is-admin', isAdmin());
-  if (full || !dirty) { scheds = JSON.parse(JSON.stringify(state.schedules)); rev = state.rev; if (isAdmin()) renderScheds(); }
+  if (!(isAdmin() && (state.users || []).some((u) => u.id === editOwner))) editOwner = state.me.id;
+  if (full || !dirty) loadOwnScheds();
   render();
+  updateHints();
+}
+
+function loadOwnScheds() {
+  scheds = JSON.parse(JSON.stringify(state.schedules.filter((x) => x.owner === editOwner)));
+  rev = state.revs[editOwner] || 0;
+  renderScheds();
+}
+
+function changeOwner(id) {
+  if (dirty && !confirm('Perubahan jadwal belum disimpan. Buang perubahan dan pindah?')) { $('ownerSel').value = editOwner; return; }
+  editOwner = id; clearDirty(); loadOwnScheds(); render(); updateHints();
+}
+
+// Hari-hari di mana jadwal x tidak berbunyi karena ada jadwal lain (dibuat lebih dulu) di jam yang sama
+function skippedDays(x, all) {
+  return x.days.filter((d) => all.some((o) => o !== x && o.enabled && o.time === x.time && o.days.includes(d) && (o.created || Infinity) < (x.created || Infinity)));
+}
+const dayList = (ds) => ORDER.filter((d) => ds.includes(d)).map((d) => DAYS[d]).join(', ');
+
+function updateHints() {
+  if (!state) return;
+  const others = state.schedules.filter((o) => o.owner !== editOwner);
+  scheds.forEach((s, i) => {
+    const el = $('hint-' + i); if (!el) return;
+    el.className = 'hint'; el.innerHTML = '';
+    if (!s.enabled) return;
+    const clash = others.filter((o) => o.enabled && o.time === s.time && o.days.some((d) => s.days.includes(d)));
+    if (!clash.length) return;
+    const lose = clash.filter((o) => (o.created || Infinity) < (s.created || Infinity));
+    const win = clash.filter((o) => !lose.includes(o));
+    let h = '';
+    lose.forEach((o) => { h += `⚠️ Tidak berbunyi pada <b>${dayList(o.days.filter((d) => s.days.includes(d)))}</b> — sudah ada "${esc(o.label || 'Bel')}" milik <b>${esc(o.ownerName)}</b> di jam yang sama.<br>`; });
+    win.forEach((o) => { h += `ℹ️ Jam sama dengan "${esc(o.label || 'Bel')}" milik ${esc(o.ownerName)} (${dayList(o.days.filter((d) => s.days.includes(d)))}) — jadwal ini yang berbunyi.<br>`; });
+    el.className = 'hint ' + (lose.length ? 'warn' : 'info'); el.innerHTML = h;
+  });
+}
+
+function renderCombined() {
+  const s = state;
+  $('combDays').innerHTML = ORDER.map((d) => `<label class="${d === combDay ? 'on' : ''}" data-cd="${d}">${DAYS[d]}</label>`).join('');
+  $('combDays').querySelectorAll('[data-cd]').forEach((el) => el.onclick = () => { combDay = +el.dataset.cd; renderCombined(); });
+  const list = s.schedules.filter((x) => x.enabled && x.days.includes(combDay)).sort((a, b) => a.time.localeCompare(b.time) || a.created - b.created);
+  $('combined').innerHTML = list.length ? list.map((x) => {
+    const skip = skippedDays(x, s.schedules).includes(combDay);
+    const winner = skip ? list.find((o) => o.time === x.time) : null;
+    return `<div class="ro ${skip ? 'skip' : ''}"><b>${x.time}</b><div>${esc(x.label || 'Bel')} <span class="mut">· ${esc(x.ownerName)}</span>${skip ? `<div class="skipnote">Tidak berbunyi — sudah ada "${esc(winner.label || 'Bel')}" milik ${esc(winner.ownerName)}</div>` : ''}</div></div>`;
+  }).join('') : '<p class="mut">Tidak ada bel pada hari ini.</p>';
 }
 
 function render() {
@@ -228,13 +288,15 @@ function render() {
   $('manual').innerHTML = s.sounds.length ? s.sounds.map((f) => `<button class="bell-btn" data-f="${esc(f)}">🔔 ${esc(f.replace(/\.[^.]+$/, ''))}</button>`).join('') : '<span class="mut">Belum ada suara.</span>';
   $('manual').querySelectorAll('button').forEach((btn) => btn.onclick = () => playNow(btn.dataset.f));
 
-  // jadwal baca-saja (operator)
-  $('schedRO').innerHTML = s.schedules.length ? s.schedules.filter((x) => x.enabled).map((x) =>
-    `<div class="ro"><b>${x.time}</b><div>${esc(x.label || 'Bel')}<div class="mut">${ORDER.filter((d) => x.days.includes(d)).map((d) => DAYS[d]).join(', ')}</div></div></div>`).join('') : '<p class="mut">Belum ada jadwal.</p>';
+  renderCombined();
+  const mine = editOwner === s.me.id;
+  $('schedTitle').textContent = mine ? 'Jadwal Saya' : `Jadwal milik ${(s.users || []).find((u) => u.id === editOwner)?.name || ''}`;
 
   $('log').innerHTML = s.logs.map((l) => `<div>${new Date(l.t).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})} — ${esc(l.m)}</div>`).join('') || '<span class="mut">Kosong</span>';
 
   if (!isAdmin()) return;
+
+  $('ownerSel').innerHTML = s.users.map((u) => `<option value="${u.id}" ${u.id === editOwner ? 'selected' : ''}>${u.id === s.me.id ? 'Jadwal saya' : 'Jadwal milik ' + esc(u.name)} (${s.schedules.filter((x) => x.owner === u.id).length})</option>`).join('');
 
   $('sounds').innerHTML = s.sounds.map((f) => `
     <div class="line"><span class="name">${esc(f)}</span>
@@ -269,7 +331,8 @@ function render() {
         await api('/api/users/update', { method:'POST', json:{ id: u.id, password: pw } }); toast('Password diganti');
       }
       if (btn.dataset.a === 'del') {
-        if (!confirm(`Hapus akun ${u.name}?`)) return;
+        const n = s.schedules.filter((x) => x.owner === u.id).length;
+        if (!confirm(`Hapus akun ${u.name}?` + (n ? `\n\n${n} jadwal miliknya akan dipindah ke akun Anda.` : ''))) return;
         await api('/api/users/delete', { method:'POST', json:{ id: u.id } }); toast('Akun dihapus');
       }
       load();
@@ -297,6 +360,7 @@ function renderScheds() {
         <button class="sm bad" data-del="${i}">🗑</button>
       </div>
       <div class="days">${ORDER.map((d) => `<label class="${s.days.includes(d) ? 'on' : ''}"><input type="checkbox" data-i="${i}" data-day="${d}" ${s.days.includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div>
+      <div class="hint" id="hint-${i}"></div>
     </div>`).join('') : '<p class="mut">Belum ada jadwal. Ketuk "+ Tambah".</p>';
 
   $('scheds').querySelectorAll('[data-k]').forEach((el) => {
@@ -320,7 +384,7 @@ function renderScheds() {
   });
 }
 
-function markDirty() { dirty = true; $('saveBtn').classList.add('dirty'); $('saveBtn').textContent = '💾 Simpan Jadwal (belum disimpan)'; }
+function markDirty() { updateHints(); dirty = true; $('saveBtn').classList.add('dirty'); $('saveBtn').textContent = '💾 Simpan Jadwal (belum disimpan)'; }
 function clearDirty() { dirty = false; $('saveBtn').classList.remove('dirty'); $('saveBtn').textContent = '💾 Simpan Jadwal'; }
 
 function addSched() {
@@ -333,10 +397,10 @@ function addSched() {
 async function saveScheds() {
   if (scheds.some((s) => !s.sound)) { toast('Ada jadwal yang belum dipilih suaranya'); return; }
   try {
-    const r = await api('/api/schedules', { method:'POST', json:{ schedules: scheds, rev } });
-    scheds = r.schedules; rev = r.rev; clearDirty(); renderScheds(); toast('Jadwal tersimpan ✓'); load();
+    const r = await api('/api/schedules', { method:'POST', json:{ owner: editOwner, schedules: scheds, rev } });
+    rev = r.rev; clearDirty(); toast('Jadwal tersimpan ✓'); load(true);
   } catch (e) {
-    if (e.status === 409 && confirm('Jadwal baru saja diubah oleh admin lain.\n\nOK = muat jadwal terbaru (perubahan Anda dibuang)\nBatal = tetap di sini')) { clearDirty(); load(true); }
+    if (e.status === 409 && confirm('Jadwal ini baru saja diubah dari perangkat lain.\n\nOK = muat jadwal terbaru (perubahan Anda dibuang)\nBatal = tetap di sini')) { clearDirty(); load(true); }
   }
 }
 

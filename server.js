@@ -23,7 +23,7 @@ if (fs.existsSync(DEF) && fs.readdirSync(SOUNDS).length === 0) {
 
 // ---------- Database sederhana (JSON) ----------
 const DB_FILE = path.join(DATA, 'db.json');
-let db = { holiday: false, schedules: [], rev: 1, users: [], sessions: {} };
+let db = { holiday: false, schedules: [], revs: {}, users: [], sessions: {} };
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) }; } catch (e) {}
 function save() {
   const tmp = DB_FILE + '.tmp';
@@ -50,7 +50,20 @@ if (!db.users.length) {
   console.log(`Akun awal dibuat → username: admin  password: ${db.pin ? '(PIN lama Anda)' : 'admin1234'}`);
 }
 delete db.pin; delete db.secret;
+// Migrasi: setiap jadwal punya pemilik & waktu dibuat (untuk menentukan siapa yang menang saat jam sama)
+{
+  const firstAdmin = db.users.find((u) => u.role === 'admin') || db.users[0];
+  const n = db.schedules.length;
+  db.schedules.forEach((s, i) => {
+    if (!s.owner || !db.users.some((u) => u.id === s.owner)) s.owner = firstAdmin.id;
+    if (!s.created) s.created = Date.now() - (n - i) * 1000;
+  });
+  db.revs = db.revs || {};
+  delete db.rev;
+}
 save();
+const ownerName = (id) => (db.users.find((u) => u.id === id) || {}).name || '(akun terhapus)';
+const byCreated = (a, b) => a.created - b.created;
 
 const SESSION_DAYS = 30;
 function createSession(u) {
@@ -110,17 +123,22 @@ function playSound(file, reason) {
 const pad = (n) => String(n).padStart(2, '0');
 const DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
+// Jadwal yang aktif pada hari & jam tertentu, urut dari yang dibuat paling awal (index 0 = yang berbunyi)
+const matchesAt = (dow, hm) => db.schedules.filter((s) => s.enabled && s.time === hm && s.days.includes(dow)).sort(byCreated);
+
 function upcoming(limit = 8) {
   if (db.holiday) return [];
   const now = new Date(), out = [];
   for (let d = 0; d < 8 && out.length < limit; d++) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-    db.schedules
-      .filter((s) => s.enabled && s.days.includes(day.getDay()))
-      .map((s) => { const [h, m] = s.time.split(':').map(Number); return { s, at: new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m) }; })
-      .filter((x) => x.at > now)
-      .sort((a, b) => a.at - b.at)
-      .forEach(({ s, at }) => out.length < limit && out.push({ label: s.label, time: s.time, day: DAYS[at.getDay()], today: d === 0, at: at.getTime(), sound: s.sound }));
+    const times = [...new Set(db.schedules.filter((s) => s.enabled && s.days.includes(day.getDay())).map((s) => s.time))].sort();
+    for (const t of times) {
+      const [h, m] = t.split(':').map(Number);
+      const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m);
+      if (at <= now || out.length >= limit) continue;
+      const list = matchesAt(day.getDay(), t), w = list[0];
+      out.push({ label: w.label, time: t, day: DAYS[at.getDay()], today: d === 0, at: at.getTime(), sound: w.sound, owner: ownerName(w.owner), skipped: list.length - 1 });
+    }
   }
   return out;
 }
@@ -135,7 +153,12 @@ setInterval(() => {
   if (key === lastMinute) return;
   lastMinute = key;
   if (!db.holiday) {
-    for (const s of db.schedules) if (s.enabled && s.time === hm && s.days.includes(n.getDay())) playSound(s.sound, s.label || 'Jadwal');
+    const list = matchesAt(n.getDay(), hm);
+    if (list.length) {
+      const w = list[0];
+      playSound(w.sound, `${w.label || 'Jadwal'} (${ownerName(w.owner)})`);
+      if (list.length > 1) log(`${list.length - 1} jadwal lain di ${hm} tidak dibunyikan karena jamnya sama: ` + list.slice(1).map((x) => `${x.label || 'Jadwal'} – ${ownerName(x.owner)}`).join(', '));
+    }
   }
   setTimeout(() => broadcast(tickMsg()), 1500); // segarkan daftar bel di player tiap menit
 }, 1000);
@@ -173,16 +196,22 @@ function serveFile(req, res, file) {
   });
 }
 
-function validSchedules(list) {
+function validSchedules(list, owner, existing) {
   if (!Array.isArray(list)) return null;
-  return list.map((s) => ({
-    id: String(s.id || crypto.randomBytes(4).toString('hex')),
-    time: /^\d{2}:\d{2}$/.test(s.time) ? s.time : '07:00',
-    label: String(s.label || '').slice(0, 60),
-    sound: safeName(s.sound) || '',
-    days: Array.isArray(s.days) ? [...new Set(s.days.map(Number).filter((d) => d >= 0 && d <= 6))] : [1, 2, 3, 4, 5],
-    enabled: s.enabled !== false,
-  })).sort((a, b) => a.time.localeCompare(b.time));
+  const now = Date.now();
+  return list.map((s, i) => {
+    const prev = existing.find((e) => e.id === s.id);
+    return {
+      id: prev ? prev.id : crypto.randomBytes(5).toString('hex'),
+      owner,
+      created: prev ? prev.created : now + i, // waktu dibuat tidak bisa diubah dari luar
+      time: /^\d{2}:\d{2}$/.test(s.time) ? s.time : '07:00',
+      label: String(s.label || '').slice(0, 60),
+      sound: safeName(s.sound) || '',
+      days: Array.isArray(s.days) ? [...new Set(s.days.map(Number).filter((d) => d >= 0 && d <= 6))] : [1, 2, 3, 4, 5],
+      enabled: s.enabled !== false,
+    };
+  }).sort((a, b) => a.time.localeCompare(b.time));
 }
 const validUsername = (u) => /^[a-z0-9._-]{3,30}$/.test(u);
 const validPassword = (p) => typeof p === 'string' && p.length >= 6 && p.length <= 100;
@@ -236,7 +265,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'GET' && p === '/api/state') {
         return send(res, 200, {
           me: publicUser(me), version: VERSION, serverTime: Date.now(), holiday: db.holiday,
-          schedules: db.schedules, rev: db.rev, sounds: listSounds(), players: players.size,
+          schedules: db.schedules.map((x) => ({ ...x, ownerName: ownerName(x.owner) })), revs: db.revs, sounds: listSounds(), players: players.size,
           next: nextBell(), logs, users: isAdmin ? db.users.map(publicUser) : undefined,
         });
       }
@@ -261,19 +290,27 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { ok: true });
       }
 
+      // Jadwal: setiap akun mengatur jadwalnya sendiri; admin boleh mengatur jadwal akun mana pun
+      if (req.method === 'POST' && p === '/api/schedules') {
+        const body = await readJSON(req);
+        const owner = body.owner && body.owner !== me.id ? (isAdmin ? body.owner : null) : me.id;
+        if (!owner) return adminOnly();
+        if (!db.users.some((u) => u.id === owner)) return send(res, 400, { error: 'Akun pemilik tidak ditemukan' });
+        const cur = db.revs[owner] || 0;
+        if (body.rev !== undefined && body.rev !== cur) return send(res, 409, { error: 'Jadwal ini baru saja diubah dari perangkat lain. Muat ulang dulu agar perubahan tidak tertimpa.' });
+        const existing = db.schedules.filter((x) => x.owner === owner);
+        const list = validSchedules(body.schedules, owner, existing);
+        if (!list) return send(res, 400, { error: 'Data tidak valid' });
+        db.schedules = db.schedules.filter((x) => x.owner !== owner).concat(list);
+        db.revs[owner] = cur + 1; save();
+        log(owner === me.id ? `${me.name} mengubah jadwalnya (${list.length} jadwal)` : `${me.name} mengubah jadwal milik ${ownerName(owner)} (${list.length} jadwal)`);
+        broadcast(tickMsg());
+        return send(res, 200, { ok: true, rev: db.revs[owner] });
+      }
+
       // --- khusus admin ---
       if (!isAdmin) return adminOnly();
 
-      if (req.method === 'POST' && p === '/api/schedules') {
-        const body = await readJSON(req);
-        if (body.rev !== undefined && body.rev !== db.rev) return send(res, 409, { error: 'Jadwal sudah diubah oleh admin lain. Muat ulang dulu agar perubahan mereka tidak tertimpa.' });
-        const list = validSchedules(body.schedules);
-        if (!list) return send(res, 400, { error: 'Data tidak valid' });
-        db.schedules = list; db.rev++; save();
-        log(`Jadwal diubah oleh ${me.name} (${list.length} jadwal)`);
-        broadcast(tickMsg());
-        return send(res, 200, { ok: true, schedules: list, rev: db.rev });
-      }
       if (req.method === 'PUT' && p === '/api/sounds') {
         const name = safeName(url.searchParams.get('name'));
         if (!name) return send(res, 400, { error: 'Hanya file mp3 / wav / ogg / m4a' });
@@ -330,9 +367,12 @@ const server = http.createServer(async (req, res) => {
         if (!u) return send(res, 404, { error: 'Akun tidak ditemukan' });
         if (u.id === me.id) return send(res, 400, { error: 'Tidak bisa menghapus akun sendiri' });
         if (u.role === 'admin' && db.users.filter((x) => x.role === 'admin').length <= 1) return send(res, 400, { error: 'Harus ada minimal satu admin' });
-        db.users = db.users.filter((x) => x.id !== id); dropSessions(id); save();
-        log(`${me.name} menghapus akun ${u.name}`);
-        return send(res, 200, { ok: true });
+        const moved = db.schedules.filter((x) => x.owner === id);
+        moved.forEach((x) => { x.owner = me.id; });
+        if (moved.length) db.revs[me.id] = (db.revs[me.id] || 0) + 1;
+        db.users = db.users.filter((x) => x.id !== id); dropSessions(id); delete db.revs[id]; save();
+        log(`${me.name} menghapus akun ${u.name}` + (moved.length ? ` (${moved.length} jadwalnya dipindah ke ${me.name})` : ''));
+        return send(res, 200, { ok: true, moved: moved.length });
       }
     }
     send(res, 404, { error: 'Not found' });
