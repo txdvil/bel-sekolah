@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d4ed8">
+<title>Panel Bel Sekolah</title>
+<style>
+  :root { --bg:#f1f5f9; --card:#fff; --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; --pri:#1d4ed8; --ok:#16a34a; --bad:#dc2626; --warn:#ea580c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); padding-bottom:40px; }
+  header { background:var(--pri); color:#fff; padding:14px 16px 16px; position:sticky; top:0; z-index:5; }
+  header h1 { margin:0; font-size:18px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  header .who { font-size:13px; font-weight:400; opacity:.9; }
+  header .row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:6px; font-size:14px; opacity:.95; }
+  main { max-width:760px; margin:0 auto; padding:12px; }
+  .card { background:var(--card); border-radius:14px; padding:16px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .card h2 { font-size:16px; margin:0 0 12px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .mut { color:var(--mut); font-size:13px; }
+  button { font:inherit; border:0; border-radius:10px; padding:10px 14px; cursor:pointer; background:#e2e8f0; color:var(--ink); }
+  button.pri { background:var(--pri); color:#fff; }
+  button.bad { background:var(--bad); color:#fff; }
+  button.sm { padding:6px 10px; font-size:13px; }
+  input, select { font:inherit; padding:9px 10px; border:1px solid var(--line); border-radius:9px; width:100%; background:#fff; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .bell-btn { background:#dbeafe; color:#1e3a8a; padding:16px 10px; font-weight:600; word-break:break-word; }
+  .bell-btn:active { transform:scale(.97); }
+  .stop { width:100%; margin-top:10px; padding:14px; font-weight:700; }
+  .pill { display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.18); padding:4px 10px; border-radius:99px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#fca5a5; }
+  .dot.on { background:#86efac; }
+  .sched { border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .sched.off { opacity:.55; }
+  .sched .top { display:grid; grid-template-columns:110px 1fr; gap:8px; }
+  .sched .mid { display:grid; grid-template-columns:1fr auto auto; gap:8px; margin-top:8px; align-items:center; }
+  .days { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .days label { flex:1; min-width:40px; text-align:center; border:1px solid var(--line); border-radius:8px; padding:6px 0; font-size:13px; cursor:pointer; user-select:none; }
+  .days input { display:none; }
+  .days label.on { background:var(--pri); color:#fff; border-color:var(--pri); }
+  .switch { position:relative; width:46px; height:26px; flex:none; display:inline-block; }
+  .switch input { opacity:0; width:0; height:0; }
+  .switch span { position:absolute; inset:0; background:#cbd5e1; border-radius:99px; transition:.2s; cursor:pointer; }
+  .switch span::before { content:''; position:absolute; width:20px; height:20px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.2s; }
+  .switch input:checked + span { background:var(--ok); }
+  .switch input:checked + span::before { transform:translateX(20px); }
+  .line { display:flex; align-items:center; gap:8px; padding:9px 0; border-bottom:1px solid var(--line); }
+  .line:last-child { border:0; }
+  .line .name { flex:1; word-break:break-all; font-size:14px; }
+  .ro { display:grid; grid-template-columns:64px 1fr; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .ro b { font-variant-numeric:tabular-nums; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:99px; background:#e2e8f0; color:#334155; margin-left:6px; white-space:nowrap; }
+  .badge.admin { background:#fef3c7; color:#92400e; }
+  .log { font-family:ui-monospace,Consolas,monospace; font-size:12px; max-height:240px; overflow:auto; }
+  .log div { padding:3px 0; border-bottom:1px dashed var(--line); }
+  .banner { background:#fff7ed; color:#9a3412; border:1px solid #fed7aa; padding:10px 12px; border-radius:10px; margin-bottom:12px; font-size:14px; }
+  .banner.red { background:#fef2f2; color:#991b1b; border-color:#fecaca; }
+  .row2 { display:flex; gap:8px; align-items:center; }
+  .form { display:grid; gap:8px; }
+  #login { position:fixed; inset:0; background:var(--bg); display:none; align-items:center; justify-content:center; z-index:20; padding:20px; }
+  #login .card { width:100%; max-width:340px; text-align:center; }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#0f172a; color:#fff; padding:10px 16px; border-radius:10px; font-size:14px; display:none; z-index:30; max-width:90%; }
+  .dirty { background:var(--warn) !important; color:#fff !important; }
+  .admin-only { display:none; }
+  body.is-admin .admin-only { display:block; }
+  body.is-admin .op-only { display:none; }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card">
+    <h2 style="justify-content:center">🔔 Panel Bel Sekolah</h2>
+    <div class="form">
+      <input id="lUser" placeholder="Username" autocapitalize="none" autocomplete="username">
+      <input id="lPass" type="password" placeholder="Password" autocomplete="current-password">
+      <button class="pri" onclick="doLogin()">Masuk</button>
+    </div>
+    <p class="mut" id="loginErr" style="color:var(--bad)"></p>
+  </div>
+</div>
+
+<header>
+  <h1>🔔 Bel Sekolah <span class="who" id="who"></span></h1>
+  <div class="row">
+    <span id="srvTime">--:--</span>
+    <span class="pill"><span class="dot" id="spkDot"></span><span id="spkText">Speaker</span></span>
+  </div>
+  <div class="row"><span id="nextTxt">Bel berikutnya: —</span></div>
+</header>
+
+<main>
+  <div id="banners"></div>
+
+  <div class="card">
+    <h2>Bunyikan Sekarang</h2>
+    <div class="grid" id="manual"></div>
+    <button class="bad stop" onclick="api('/api/stop',{method:'POST'}).then(()=>toast('Suara dihentikan'))">⏹ HENTIKAN SUARA</button>
+  </div>
+
+  <div class="card admin-only">
+    <h2>
+      <span>Mode Libur</span>
+      <label class="switch"><input type="checkbox" id="holiday" onchange="setHoliday(this.checked)"><span></span></label>
+    </h2>
+    <div class="mut">Aktifkan saat libur/tanggal merah agar semua bel otomatis tidak berbunyi. Tombol manual tetap bisa dipakai.</div>
+  </div>
+
+  <!-- Jadwal: tampilan baca-saja untuk operator -->
+  <div class="card op-only">
+    <h2>Jadwal Bel</h2>
+    <div id="schedRO"></div>
+  </div>
+
+  <!-- Jadwal: editor untuk admin -->
+  <div class="card admin-only">
+    <h2>Jadwal Bel <button class="sm" onclick="addSched()">+ Tambah</button></h2>
+    <div id="scheds"></div>
+    <div class="row2">
+      <button class="pri" id="saveBtn" style="flex:1" onclick="saveScheds()">💾 Simpan Jadwal</button>
+      <button onclick="copyDay()">⧉ Salin Pola Hari</button>
+    </div>
+    <p class="mut">Waktu mengikuti jam server (WIT). Ketuk nama hari untuk memilih/membatalkan.</p>
+  </div>
+
+  <div class="card admin-only">
+    <h2>File Suara</h2>
+    <input type="file" id="file" accept=".mp3,.wav,.ogg,.m4a,audio/*" multiple>
+    <button class="pri" style="width:100%;margin-top:8px" onclick="upload()">⬆️ Unggah Suara</button>
+    <div id="sounds" style="margin-top:10px"></div>
+    <p class="mut">▶ = dengar di HP ini saja. 🔔 = bunyikan di speaker sekolah.</p>
+  </div>
+
+  <div class="card admin-only">
+    <h2>Akun Pengguna <button class="sm" onclick="toggleAddUser()">+ Tambah Akun</button></h2>
+    <div class="form" id="addUser" style="display:none;margin-bottom:12px;padding:12px;border:1px solid var(--line);border-radius:12px">
+      <input id="nuName" placeholder="Nama lengkap, mis. Bu Rina (Piket)">
+      <input id="nuUser" placeholder="Username (huruf kecil), mis. rina" autocapitalize="none">
+      <input id="nuPass" type="text" placeholder="Password (min. 6 karakter)">
+      <select id="nuRole">
+        <option value="operator">Operator — hanya bunyikan/hentikan bel & lihat jadwal</option>
+        <option value="admin">Admin — semua akses (jadwal, suara, akun)</option>
+      </select>
+      <button class="pri" onclick="addUser()">Simpan Akun</button>
+    </div>
+    <div id="users"></div>
+  </div>
+
+  <div class="card">
+    <h2>Akun Saya</h2>
+    <div class="form">
+      <input id="pwOld" type="password" placeholder="Password lama" autocomplete="current-password">
+      <input id="pwNew" type="password" placeholder="Password baru (min. 6 karakter)" autocomplete="new-password">
+      <button onclick="changePw()">Ganti Password</button>
+      <button class="admin-only" onclick="exportData()">⬇️ Cadangkan jadwal (JSON)</button>
+      <button onclick="logout()">Keluar</button>
+    </div>
+    <p class="mut" id="ver"></p>
+  </div>
+
+  <div class="card">
+    <h2>Riwayat</h2>
+    <div class="log" id="log"></div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const DAYS = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+const ORDER = [1,2,3,4,5,6,0];
+let token = localStorage.getItem('belToken') || '';
+let state = null, scheds = [], rev = 0, dirty = false, offset = 0;
+const preview = new Audio();
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = (n) => String(n).padStart(2,'0');
+const isAdmin = () => state && state.me.role === 'admin';
+
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3000); }
+
+async function api(url, opt = {}) {
+  opt.headers = { ...(opt.headers || {}), 'x-token': token };
+  if (opt.json !== undefined) { opt.body = JSON.stringify(opt.json); opt.headers['Content-Type'] = 'application/json'; }
+  const r = await fetch(url, opt);
+  if (r.status === 401) { showLogin(); throw new Error('login'); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(data.error || 'Gagal'); const e = new Error(data.error); e.status = r.status; throw e; }
+  return data;
+}
+
+function showLogin() { token = ''; localStorage.removeItem('belToken'); $('login').style.display = 'flex'; setTimeout(() => $('lUser').focus(), 50); }
+async function doLogin() {
+  $('loginErr').textContent = '';
+  const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: $('lUser').value, password: $('lPass').value }) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { $('loginErr').textContent = d.error || 'Gagal masuk'; return; }
+  token = d.token; localStorage.setItem('belToken', token);
+  $('login').style.display = 'none'; $('lPass').value = '';
+  load(true);
+}
+$('lPass').addEventListener('keydown', (e) => e.key === 'Enter' && doLogin());
+$('lUser').addEventListener('keydown', (e) => e.key === 'Enter' && $('lPass').focus());
+async function logout() { try { await api('/api/logout', { method:'POST' }); } catch {} showLogin(); }
+
+async function load(full) {
+  try { state = await api('/api/state'); } catch { return; }
+  offset = state.serverTime - Date.now();
+  document.body.classList.toggle('is-admin', isAdmin());
+  if (full || !dirty) { scheds = JSON.parse(JSON.stringify(state.schedules)); rev = state.rev; if (isAdmin()) renderScheds(); }
+  render();
+}
+
+function render() {
+  const s = state;
+  $('who').textContent = `${s.me.name} · ${s.me.role === 'admin' ? 'Admin' : 'Operator'}`;
+  $('spkDot').classList.toggle('on', s.players > 0);
+  $('spkText').textContent = s.players === 1 ? 'Speaker terhubung' : s.players > 1 ? `⚠️ ${s.players} speaker terhubung` : 'Speaker TIDAK terhubung';
+  $('nextTxt').textContent = s.holiday ? '🏖️ Mode libur aktif' : s.next ? `Bel berikutnya: ${s.next.time} · ${s.next.label || 'Bel'} (${s.next.day})` : 'Belum ada jadwal aktif';
+  $('holiday').checked = s.holiday;
+  $('ver').textContent = `Versi aplikasi: ${s.version}`;
+
+  let b = '';
+  if (!s.players) b += `<div class="banner red">⚠️ Komputer speaker belum terhubung. Buka <b>/player</b> di komputer yang tersambung speaker.</div>`;
+  if (s.players > 1) b += `<div class="banner">Halaman /player terbuka di ${s.players} tempat, jadi bel bisa berbunyi dobel. Tutup yang tidak perlu.</div>`;
+  if (s.holiday) b += `<div class="banner">🏖️ Mode libur aktif — bel otomatis tidak berbunyi.</div>`;
+  $('banners').innerHTML = b;
+
+  $('manual').innerHTML = s.sounds.length ? s.sounds.map((f) => `<button class="bell-btn" data-f="${esc(f)}">🔔 ${esc(f.replace(/\.[^.]+$/, ''))}</button>`).join('') : '<span class="mut">Belum ada suara.</span>';
+  $('manual').querySelectorAll('button').forEach((btn) => btn.onclick = () => playNow(btn.dataset.f));
+
+  // jadwal baca-saja (operator)
+  $('schedRO').innerHTML = s.schedules.length ? s.schedules.filter((x) => x.enabled).map((x) =>
+    `<div class="ro"><b>${x.time}</b><div>${esc(x.label || 'Bel')}<div class="mut">${ORDER.filter((d) => x.days.includes(d)).map((d) => DAYS[d]).join(', ')}</div></div></div>`).join('') : '<p class="mut">Belum ada jadwal.</p>';
+
+  $('log').innerHTML = s.logs.map((l) => `<div>${new Date(l.t).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})} — ${esc(l.m)}</div>`).join('') || '<span class="mut">Kosong</span>';
+
+  if (!isAdmin()) return;
+
+  $('sounds').innerHTML = s.sounds.map((f) => `
+    <div class="line"><span class="name">${esc(f)}</span>
+      <button class="sm" data-a="prev" data-f="${esc(f)}">▶</button>
+      <button class="sm" data-a="play" data-f="${esc(f)}">🔔</button>
+      <button class="sm bad" data-a="del" data-f="${esc(f)}">🗑</button></div>`).join('');
+  $('sounds').querySelectorAll('button').forEach((btn) => btn.onclick = () => {
+    const f = btn.dataset.f;
+    if (btn.dataset.a === 'prev') { if (!preview.paused && preview.dataset.f === f) { preview.pause(); return; } preview.src = '/sounds/' + encodeURIComponent(f); preview.dataset.f = f; preview.play(); }
+    if (btn.dataset.a === 'play') playNow(f);
+    if (btn.dataset.a === 'del' && confirm(`Hapus ${f}?`)) api('/api/sounds?name=' + encodeURIComponent(f), { method:'DELETE' }).then(() => load());
+  });
+
+  $('users').innerHTML = s.users.map((u) => `
+    <div class="line">
+      <span class="name"><b>${esc(u.name)}</b><span class="badge ${u.role}">${u.role === 'admin' ? 'Admin' : 'Operator'}</span><br><span class="mut">@${esc(u.username)}${u.id === s.me.id ? ' (Anda)' : ''}</span></span>
+      <button class="sm" data-a="role" data-id="${u.id}">${u.role === 'admin' ? '→ Operator' : '→ Admin'}</button>
+      <button class="sm" data-a="pw" data-id="${u.id}">🔑</button>
+      ${u.id === s.me.id ? '' : `<button class="sm bad" data-a="del" data-id="${u.id}">🗑</button>`}
+    </div>`).join('');
+  $('users').querySelectorAll('button').forEach((btn) => btn.onclick = async () => {
+    const u = s.users.find((x) => x.id === btn.dataset.id);
+    try {
+      if (btn.dataset.a === 'role') {
+        const role = u.role === 'admin' ? 'operator' : 'admin';
+        if (!confirm(`Ubah ${u.name} menjadi ${role === 'admin' ? 'Admin' : 'Operator'}?`)) return;
+        await api('/api/users/update', { method:'POST', json:{ id: u.id, role } }); toast('Peran diubah');
+      }
+      if (btn.dataset.a === 'pw') {
+        const pw = prompt(`Password baru untuk ${u.name} (min. 6 karakter):`);
+        if (!pw) return;
+        await api('/api/users/update', { method:'POST', json:{ id: u.id, password: pw } }); toast('Password diganti');
+      }
+      if (btn.dataset.a === 'del') {
+        if (!confirm(`Hapus akun ${u.name}?`)) return;
+        await api('/api/users/delete', { method:'POST', json:{ id: u.id } }); toast('Akun dihapus');
+      }
+      load();
+    } catch {}
+  });
+}
+
+function soundOptions(sel) {
+  const list = state ? state.sounds : [];
+  let o = list.map((f) => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`).join('');
+  if (sel && !list.includes(sel)) o = `<option selected>${esc(sel)} (hilang!)</option>` + o;
+  return '<option value="">— pilih suara —</option>' + o;
+}
+
+function renderScheds() {
+  $('scheds').innerHTML = scheds.length ? scheds.map((s, i) => `
+    <div class="sched ${s.enabled ? '' : 'off'}">
+      <div class="top">
+        <input type="time" value="${s.time}" data-i="${i}" data-k="time">
+        <input placeholder="Keterangan, mis. Masuk / Istirahat" value="${esc(s.label)}" data-i="${i}" data-k="label">
+      </div>
+      <div class="mid">
+        <select data-i="${i}" data-k="sound">${soundOptions(s.sound)}</select>
+        <label class="switch" title="Aktif"><input type="checkbox" ${s.enabled ? 'checked' : ''} data-i="${i}" data-k="enabled"><span></span></label>
+        <button class="sm bad" data-del="${i}">🗑</button>
+      </div>
+      <div class="days">${ORDER.map((d) => `<label class="${s.days.includes(d) ? 'on' : ''}"><input type="checkbox" data-i="${i}" data-day="${d}" ${s.days.includes(d) ? 'checked' : ''}>${DAYS[d]}</label>`).join('')}</div>
+    </div>`).join('') : '<p class="mut">Belum ada jadwal. Ketuk "+ Tambah".</p>';
+
+  $('scheds').querySelectorAll('[data-k]').forEach((el) => {
+    el.oninput = el.onchange = () => {
+      const s = scheds[el.dataset.i], k = el.dataset.k;
+      s[k] = k === 'enabled' ? el.checked : el.value.replace(/ \(hilang!\)$/, '');
+      if (k === 'enabled') el.closest('.sched').classList.toggle('off', !el.checked);
+      markDirty();
+    };
+  });
+  $('scheds').querySelectorAll('[data-day]').forEach((el) => {
+    el.onchange = () => {
+      const s = scheds[el.dataset.i], d = +el.dataset.day;
+      s.days = el.checked ? [...s.days, d] : s.days.filter((x) => x !== d);
+      el.parentElement.classList.toggle('on', el.checked);
+      markDirty();
+    };
+  });
+  $('scheds').querySelectorAll('[data-del]').forEach((el) => {
+    el.onclick = () => { if (confirm('Hapus jadwal ini?')) { scheds.splice(+el.dataset.del, 1); renderScheds(); markDirty(); } };
+  });
+}
+
+function markDirty() { dirty = true; $('saveBtn').classList.add('dirty'); $('saveBtn').textContent = '💾 Simpan Jadwal (belum disimpan)'; }
+function clearDirty() { dirty = false; $('saveBtn').classList.remove('dirty'); $('saveBtn').textContent = '💾 Simpan Jadwal'; }
+
+function addSched() {
+  const last = scheds[scheds.length - 1];
+  scheds.push({ time: last ? last.time : '07:00', label: '', sound: last ? last.sound : (state.sounds[0] || ''), days: [1,2,3,4,5], enabled: true });
+  renderScheds(); markDirty();
+  $('scheds').lastElementChild.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+async function saveScheds() {
+  if (scheds.some((s) => !s.sound)) { toast('Ada jadwal yang belum dipilih suaranya'); return; }
+  try {
+    const r = await api('/api/schedules', { method:'POST', json:{ schedules: scheds, rev } });
+    scheds = r.schedules; rev = r.rev; clearDirty(); renderScheds(); toast('Jadwal tersimpan ✓'); load();
+  } catch (e) {
+    if (e.status === 409 && confirm('Jadwal baru saja diubah oleh admin lain.\n\nOK = muat jadwal terbaru (perubahan Anda dibuang)\nBatal = tetap di sini')) { clearDirty(); load(true); }
+  }
+}
+
+function copyDay() {
+  const from = prompt('Salin jadwal dari hari apa? (Sen/Sel/Rab/Kam/Jum/Sab/Min)', 'Sen');
+  if (!from) return;
+  const to = prompt('Tambahkan ke hari apa? Pisahkan dengan koma, mis: Sel,Rab,Kam', 'Sel,Rab,Kam');
+  if (!to) return;
+  const f = DAYS.findIndex((d) => d.toLowerCase() === from.trim().toLowerCase().slice(0,3));
+  const ts = to.split(',').map((x) => DAYS.findIndex((d) => d.toLowerCase() === x.trim().toLowerCase().slice(0,3))).filter((x) => x >= 0);
+  if (f < 0 || !ts.length) { toast('Nama hari tidak dikenali'); return; }
+  let n = 0;
+  scheds.forEach((s) => { if (s.days.includes(f)) ts.forEach((t) => { if (!s.days.includes(t)) { s.days.push(t); n++; } }); });
+  renderScheds(); markDirty(); toast(`${n} hari ditambahkan — jangan lupa Simpan`);
+}
+
+async function playNow(f) {
+  try { await api('/api/play', { method:'POST', json:{ file: f } }); toast(state.players ? `🔔 Membunyikan ${f.replace(/\.[^.]+$/, '')}` : '⚠️ Terkirim, tapi speaker tidak terhubung'); load(); } catch {}
+}
+async function setHoliday(on) { try { await api('/api/holiday', { method:'POST', json:{ on } }); toast(on ? 'Mode libur aktif' : 'Bel otomatis aktif kembali'); } catch {} load(); }
+
+async function upload() {
+  const files = [...$('file').files];
+  if (!files.length) { toast('Pilih file dulu'); return; }
+  for (const f of files) {
+    toast(`Mengunggah ${f.name}…`);
+    try { await api('/api/sounds?name=' + encodeURIComponent(f.name), { method:'PUT', body: f }); } catch { return; }
+  }
+  $('file').value = ''; toast('Unggah selesai ✓'); load();
+}
+
+function toggleAddUser() { const el = $('addUser'); el.style.display = el.style.display === 'none' ? 'grid' : 'none'; }
+async function addUser() {
+  try {
+    await api('/api/users', { method:'POST', json:{ name: $('nuName').value, username: $('nuUser').value, password: $('nuPass').value, role: $('nuRole').value } });
+    toast(`Akun ${$('nuUser').value} dibuat ✓`);
+    ['nuName','nuUser','nuPass'].forEach((id) => $(id).value = ''); toggleAddUser(); load();
+  } catch {}
+}
+
+async function changePw() {
+  try {
+    await api('/api/password', { method:'POST', json:{ oldPassword: $('pwOld').value, newPassword: $('pwNew').value } });
+    $('pwOld').value = ''; $('pwNew').value = ''; toast('Password diganti ✓');
+  } catch {}
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify({ schedules: state.schedules }, null, 2)], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'jadwal-bel.json'; a.click();
+}
+
+setInterval(() => { const d = new Date(Date.now() + offset); $('srvTime').textContent = `🕒 Server ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }, 1000);
+setInterval(() => token && load(), 4000);
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+if (token) load(true); else showLogin();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+data/
+sounds/
+node_modules/
+*.log

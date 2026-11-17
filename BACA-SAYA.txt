@@ -1,0 +1,46 @@
+BEL SEKOLAH OTOMATIS
+====================
+
+CARA PASANG (di komputer yang terhubung ke speaker)
+1. Install Node.js (versi LTS) dari https://nodejs.org
+2. Ekstrak folder ini, misalnya ke C:\bel-sekolah
+3. Klik dua kali start-windows.bat
+   - Server menyala, dan Chrome otomatis membuka halaman SPEAKER (/player)
+   - Kalau muncul tombol "Aktifkan Speaker", klik sekali
+   - Biarkan jendela hitam (server) dan halaman speaker tetap terbuka
+4. Lihat jendela hitam: tertulis alamat panel, misal http://192.168.1.10:8080/
+   Buka alamat itu di HP (HP harus satu WiFi dengan komputer).
+5. Login awal: username admin, password admin1234 (atau PIN lama jika upgrade dari versi PIN).
+   Segera ganti password di menu Akun Saya.
+
+FITUR
+- Jadwal bel per jam & per hari (Senin-Minggu), bisa aktif/nonaktif per jadwal
+- Suara bisa diganti: unggah file mp3 / wav / ogg / m4a dari HP atau komputer
+- Tombol "Bunyikan Sekarang" dari HP, suaranya keluar di speaker sekolah
+- Tombol Hentikan suara
+- Mode Libur: matikan semua bel otomatis sekali tekan
+- Riwayat bel (tercatat siapa yang membunyikan/mengubah)
+- Akun: Admin (jadwal, suara, akun, mode libur) dan Operator (bunyikan/hentikan bel, lihat jadwal)
+- Halaman speaker menampilkan daftar jadwal bel berikutnya + hitung mundur
+- Update otomatis dari GitHub (run.js) - data/ dan sounds/ tidak pernah tertimpa
+- Sudah ada 2 contoh suara: "Bel Ding Dong" dan "Bel Kring"
+
+TIPS AGAR ANDAL
+- Atur Windows agar TIDAK sleep: Settings > System > Power > Sleep = Never
+- Jam komputer harus benar (Settings > Time > Set time automatically)
+- Agar otomatis jalan saat komputer dinyalakan: tekan Win+R, ketik shell:startup,
+  lalu taruh shortcut start-windows.bat di folder yang terbuka
+- Beri IP tetap untuk komputer server (di pengaturan router) agar alamat di HP tidak berubah
+- Simpan alamat panel di HP: menu browser > "Tambahkan ke layar utama"
+- Volume diatur dari volume Windows / amplifier
+
+KONTROL DARI LUAR SEKOLAH (lewat internet, bukan hanya WiFi sekolah)
+Paling aman & gratis: Tailscale (https://tailscale.com)
+- Install Tailscale di komputer server dan di HP, login dengan akun yang sama
+- Buka http://<IP-Tailscale-komputer>:8080/ dari HP, di mana saja
+Alternatif: Cloudflare Tunnel. JANGAN membuka port 8080 langsung di router.
+
+DATA
+- Jadwal & akun: folder data\db.json
+- File suara: folder sounds\
+Untuk pindah komputer, cukup salin seluruh folder ini.
